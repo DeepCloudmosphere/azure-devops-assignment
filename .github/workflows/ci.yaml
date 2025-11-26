@@ -62,4 +62,3 @@ jobs:
           else
             npm install
           fi
-          # optional: run any gateway tests here (if present)
