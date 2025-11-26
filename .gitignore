@@ -1,0 +1,122 @@
+############################
+# PYTHON
+############################
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+.eggs/
+dist/
+build/
+pip-wheel-metadata/
+*.log
+coverage/
+htmlcov/
+.pytest_cache/
+
+############################
+# NODE / JAVASCRIPT
+############################
+gateway/node_modules/
+gateway/npm-debug.log
+gateway/yarn-debug.log
+gateway/yarn-error.log
+*.tsbuildinfo
+*.tgz
+
+############################
+# ENV FILES (Do NOT commit secrets)
+############################
+*.env
+*.env.local
+*.env.*.local
+.env
+.env.*
+
+############################
+# TERRAFORM
+############################
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars    # override config files — keep tfvars out of git!
+terraform/*auto.tfvars
+terraform/backend.tfvars
+terraform/bootstrap/backend.tfvars
+terraform/bootstrap/*.log
+terraform/bootstrap/.tmp/
+
+############################
+# TERRAFORM BOOTSTRAP SECRETS
+############################
+backend.tfvars
+backend.tfvars.json
+terraform.tfvars
+terraform.tfvars.json
+
+############################
+# KUBERNETES MANIFESTS CACHE
+############################
+*.kubeconfig
+*.kube
+.kube/
+config
+
+############################
+# DOCKER
+############################
+*.tar
+*.img
+*.dockerfile.tmp
+
+############################
+# EDITOR / OS FILES
+############################
+# Mac / Linux / Windows
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# VSCode
+.vscode/
+.vscode/*
+
+# JetBrains / PyCharm
+.idea/
+.idea/*
+
+# Vim
+*.sw?
+*~
+
+############################
+# LOG FILES
+############################
+*.log
+*.out
+logs/
+log/
+
+############################
+# OTHER COMMON
+############################
+.envrc
+.sops.yaml
+.secrets/
+.secret/
+.cache/
+.tmp/
+
+# TERRAFORM PLAN FILES
+*.plan
+*.tfplan
+prod.plan
+
