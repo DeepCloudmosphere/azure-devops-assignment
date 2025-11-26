@@ -3,6 +3,10 @@ const request = require('supertest');
 const nock = require('nock');
 const app = require('../app');
 
+// set env BEFORE requiring app
+process.env.USER_SVC = 'http://mock-user';
+process.env.ORDER_SVC = 'http://mock-order';
+
 describe('Gateway', () => {
   afterEach(() => {
     nock.cleanAll();
