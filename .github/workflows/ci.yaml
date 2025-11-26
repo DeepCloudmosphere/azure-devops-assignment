@@ -1,8 +1,6 @@
 name: CI — PR checks
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -36,7 +34,10 @@ jobs:
           pip install pytest
 
       - name: Run pytest
-        run: pytest -q
+        # ensure the service directory is on PYTHONPATH so `from app import app` works
+        run: |
+          export PYTHONPATH=$(pwd):$PYTHONPATH
+          pytest -q
 
   gateway-tests:
     name: Gateway quick check (install)
@@ -55,5 +56,10 @@ jobs:
 
       - name: Install gateway deps
         run: |
-          if [ -f package.json ]; then npm ci; fi
-          # add real gateway tests here if available
+          # use 'npm install' if no package-lock.json is present
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+          # optional: run any gateway tests here (if present)
