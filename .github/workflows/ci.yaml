@@ -64,3 +64,6 @@ jobs:
           else
             npm install
           fi
+          
+      - name: Run gateway tests
+        run: npm tes
