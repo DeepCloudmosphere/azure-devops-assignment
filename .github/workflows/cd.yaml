@@ -258,7 +258,7 @@ jobs:
   #         image-ref: $(jq -r '.gateway' ./artifacts/images.json)
 
   deploy:
-    needs: [build-and-push, scan-images]
+    needs: [build-and-push]
     runs-on: ubuntu-latest
     environment: azure-devops-assignment
     steps:
