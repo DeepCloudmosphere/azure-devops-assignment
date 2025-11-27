@@ -1,0 +1,131 @@
+name: CD — build, scan, push, deploy
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+env:
+  K8S_NAMESPACE: default
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_user: ${{ steps.build_user.outputs.image }}
+      image_order: ${{ steps.build_order.outputs.image }}
+      image_gateway: ${{ steps.build_gateway.outputs.image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Build & push user-service
+        id: build_user
+        run: |
+          IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/user-service:${{ github.sha }}
+          docker build -t $IMAGE ./user-service
+          docker push $IMAGE
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Build & push order-service
+        id: build_order
+        run: |
+          IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/order-service:${{ github.sha }}
+          docker build -t $IMAGE ./order-service
+          docker push $IMAGE
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Build & push gateway
+        id: build_gateway
+        run: |
+          IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/gateway:${{ github.sha }}
+          docker build -t $IMAGE ./gateway
+          docker push $IMAGE
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+  # scan-images:
+  #   needs: build-and-push
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+
+  #     - name: Trivy scan - user
+  #       uses: aquasecurity/trivy-action@v1
+  #       with:
+  #         image-ref: ${{ needs.build-and-push.outputs.image_user }}
+
+  #     - name: Trivy scan - order
+  #       uses: aquasecurity/trivy-action@v1
+  #       with:
+  #         image-ref: ${{ needs.build-and-push.outputs.image_order }}
+
+  #     - name: Trivy scan - gateway
+  #       uses: aquasecurity/trivy-action@v1
+  #       with:
+  #         image-ref: ${{ needs.build-and-push.outputs.image_gateway }}
+
+  deploy:
+    needs: [build-and-push, scan-images]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS credentials (kubectl context)
+        uses: azure/aks-set-context@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          cluster-name: ${{ secrets.AKS_NAME }}
+          resource-group: ${{ secrets.AKS_RG }}
+
+      - name: Confirm kubectl connectivity
+        run: kubectl get nodes -o wide
+
+      - name: Update user-service image and wait rollout
+        run: |
+          kubectl -n "${{ env.K8S_NAMESPACE }}" set image deployment/user-service user=${{ needs.build-and-push.outputs.image_user }} --record
+          kubectl -n "${{ env.K8S_NAMESPACE }}" rollout status deployment/user-service --timeout=120s
+
+      - name: Update order-service image and wait rollout
+        run: |
+          kubectl -n "${{ env.K8S_NAMESPACE }}" set image deployment/order-service order=${{ needs.build-and-push.outputs.image_order }} --record
+          kubectl -n "${{ env.K8S_NAMESPACE }}" rollout status deployment/order-service --timeout=120s
+
+      - name: Update gateway image and wait rollout
+        run: |
+          kubectl -n "${{ env.K8S_NAMESPACE }}" set image deployment/gateway gateway=${{ needs.build-and-push.outputs.image_gateway }} --record
+          kubectl -n "${{ env.K8S_NAMESPACE }}" rollout status deployment/gateway --timeout=120s
+
+      - name: Post-deploy smoke test (gateway health)
+        run: |
+          # if service is LoadBalancer
+          LB_IP=$(kubectl -n "${{ env.K8S_NAMESPACE }}" get svc gateway -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null || true)
+          if [ -n "$LB_IP" ]; then
+            echo "Gateway LB IP: $LB_IP"
+            curl --fail --retry 5 --retry-delay 2 "http://$LB_IP/health"
+          else
+            echo "No external LB IP detected — attempting cluster-internal curl (requires kubectl exec access)"
+            POD=$(kubectl -n "${{ env.K8S_NAMESPACE }}" get pods -l app=gateway -o jsonpath="{.items[0].metadata.name}")
+            kubectl -n "${{ env.K8S_NAMESPACE }}" exec "$POD" -- curl --fail --retry 5 --retry-delay 2 http://localhost:3000/health
+          fi
