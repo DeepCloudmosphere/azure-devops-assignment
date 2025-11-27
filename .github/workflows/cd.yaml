@@ -15,6 +15,7 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    environment: azure-devops-assignment
     outputs:
       image_user: ${{ steps.build_user.outputs.image }}
       image_order: ${{ steps.build_order.outputs.image }}
@@ -83,6 +84,7 @@ jobs:
   deploy:
     needs: [build-and-push]
     runs-on: ubuntu-latest
+    environment: azure-devops-assignment
     steps:
       - name: Checkout
         uses: actions/checkout@v4

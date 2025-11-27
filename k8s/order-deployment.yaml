@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: order
-          image: <ACR_LOGIN_SERVER>/order-service:latest
+          image: acmeprodacr.azurecr.io/order-service:latest
           ports:
             - containerPort: 5001
           env:
