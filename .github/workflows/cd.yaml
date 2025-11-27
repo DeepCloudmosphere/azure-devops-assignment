@@ -104,30 +104,84 @@ jobs:
       - name: Confirm kubectl connectivity
         run: kubectl get nodes -o wide
 
-      - name: Update user-service image and wait rollout
+      - name: Apply k8s manifests (create/update resources)
         run: |
-          kubectl -n "${{ env.K8S_NAMESPACE }}" set image deployment/user-service user=${{ needs.build-and-push.outputs.image_user }} --record
-          kubectl -n "${{ env.K8S_NAMESPACE }}" rollout status deployment/user-service --timeout=120s
+          # Apply whatever manifests you have (creates Deployment the first time)
+          kubectl apply -f k8s/ -n "${{ env.K8S_NAMESPACE }}" || kubectl apply -f k8s/
 
-      - name: Update order-service image and wait rollout
-        run: |
-          kubectl -n "${{ env.K8S_NAMESPACE }}" set image deployment/order-service order=${{ needs.build-and-push.outputs.image_order }} --record
-          kubectl -n "${{ env.K8S_NAMESPACE }}" rollout status deployment/order-service --timeout=120s
+      - name: Wait for new resources to be accepted by API (short)
+        run: sleep 5
 
-      - name: Update gateway image and wait rollout
+      - name: Update images (only if built) and wait for rollout
+        env:
+          IMAGE_USER: ${{ needs.build-and-push.outputs.image_user }}
+          IMAGE_ORDER: ${{ needs.build-and-push.outputs.image_order }}
+          IMAGE_GATEWAY: ${{ needs.build-and-push.outputs.image_gateway }}
+          NAMESPACE: ${{ env.K8S_NAMESPACE }}
         run: |
-          kubectl -n "${{ env.K8S_NAMESPACE }}" set image deployment/gateway gateway=${{ needs.build-and-push.outputs.image_gateway }} --record
-          kubectl -n "${{ env.K8S_NAMESPACE }}" rollout status deployment/gateway --timeout=120s
+          set -euo pipefail
+          # user-service
+          if [ -n "${IMAGE_USER:-}" ]; then
+            echo "Setting image for user-service -> ${IMAGE_USER}"
+            kubectl -n "$NAMESPACE" set image deployment/user-service user="${IMAGE_USER}" --record || echo "set image returned nonzero"
+            kubectl -n "$NAMESPACE" rollout status deployment/user-service --timeout=180s || (kubectl -n "$NAMESPACE" describe deploy user-service && kubectl -n "$NAMESPACE" get pods -l app=user-service -o wide && exit 1)
+          else
+            echo "IMAGE_USER empty — skipping user-service update"
+          fi
+
+          # order-service
+          if [ -n "${IMAGE_ORDER:-}" ]; then
+            echo "Setting image for order-service -> ${IMAGE_ORDER}"
+            kubectl -n "$NAMESPACE" set image deployment/order-service order="${IMAGE_ORDER}" --record || echo "set image returned nonzero"
+            kubectl -n "$NAMESPACE" rollout status deployment/order-service --timeout=180s || (kubectl -n "$NAMESPACE" describe deploy order-service && kubectl -n "$NAMESPACE" get pods -l app=order-service -o wide && exit 1)
+          else
+            echo "IMAGE_ORDER empty — skipping order-service update"
+          fi
+
+          # gateway
+          if [ -n "${IMAGE_GATEWAY:-}" ]; then
+            echo "Setting image for gateway -> ${IMAGE_GATEWAY}"
+            kubectl -n "$NAMESPACE" set image deployment/gateway gateway="${IMAGE_GATEWAY}" --record || echo "set image returned nonzero"
+            kubectl -n "$NAMESPACE" rollout status deployment/gateway --timeout=180s || (kubectl -n "$NAMESPACE" describe deploy gateway && kubectl -n "$NAMESPACE" get pods -l app=gateway -o wide && exit 1)
+          else
+            echo "IMAGE_GATEWAY empty — skipping gateway update"
+          fi
 
       - name: Post-deploy smoke test (gateway health)
         run: |
-          # if service is LoadBalancer
           LB_IP=$(kubectl -n "${{ env.K8S_NAMESPACE }}" get svc gateway -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null || true)
           if [ -n "$LB_IP" ]; then
             echo "Gateway LB IP: $LB_IP"
             curl --fail --retry 5 --retry-delay 2 "http://$LB_IP/health"
           else
-            echo "No external LB IP detected — attempting cluster-internal curl (requires kubectl exec access)"
+            echo "No external LB IP — testing from a pod"
             POD=$(kubectl -n "${{ env.K8S_NAMESPACE }}" get pods -l app=gateway -o jsonpath="{.items[0].metadata.name}")
             kubectl -n "${{ env.K8S_NAMESPACE }}" exec "$POD" -- curl --fail --retry 5 --retry-delay 2 http://localhost:3000/health
           fi
+      # - name: Update user-service image and wait rollout
+      #   run: |
+      #     kubectl -n "${{ env.K8S_NAMESPACE }}" set image deployment/user-service user=${{ needs.build-and-push.outputs.image_user }} --record
+      #     kubectl -n "${{ env.K8S_NAMESPACE }}" rollout status deployment/user-service --timeout=120s
+
+      # - name: Update order-service image and wait rollout
+      #   run: |
+      #     kubectl -n "${{ env.K8S_NAMESPACE }}" set image deployment/order-service order=${{ needs.build-and-push.outputs.image_order }} --record
+      #     kubectl -n "${{ env.K8S_NAMESPACE }}" rollout status deployment/order-service --timeout=120s
+
+      # - name: Update gateway image and wait rollout
+      #   run: |
+      #     kubectl -n "${{ env.K8S_NAMESPACE }}" set image deployment/gateway gateway=${{ needs.build-and-push.outputs.image_gateway }} --record
+      #     kubectl -n "${{ env.K8S_NAMESPACE }}" rollout status deployment/gateway --timeout=120s
+
+      # - name: Post-deploy smoke test (gateway health)
+      #   run: |
+      #     # if service is LoadBalancer
+      #     LB_IP=$(kubectl -n "${{ env.K8S_NAMESPACE }}" get svc gateway -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null || true)
+      #     if [ -n "$LB_IP" ]; then
+      #       echo "Gateway LB IP: $LB_IP"
+      #       curl --fail --retry 5 --retry-delay 2 "http://$LB_IP/health"
+      #     else
+      #       echo "No external LB IP detected — attempting cluster-internal curl (requires kubectl exec access)"
+      #       POD=$(kubectl -n "${{ env.K8S_NAMESPACE }}" get pods -l app=gateway -o jsonpath="{.items[0].metadata.name}")
+      #       kubectl -n "${{ env.K8S_NAMESPACE }}" exec "$POD" -- curl --fail --retry 5 --retry-delay 2 http://localhost:3000/health
+      #     fi
