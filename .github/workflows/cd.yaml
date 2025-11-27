@@ -1,3 +1,148 @@
+# name: CD — build, scan, push, deploy
+
+# on:
+#   push:
+#     branches: [ main ]
+
+# permissions:
+#   contents: read
+#   id-token: write
+#   packages: write
+
+# env:
+#   K8S_NAMESPACE: default
+
+# jobs:
+#   build-and-push:
+#     runs-on: ubuntu-latest
+#     environment: azure-devops-assignment
+#     outputs:
+#       image_user: ${{ steps.build_user.outputs.image }}
+#       image_order: ${{ steps.build_order.outputs.image }}
+#       image_gateway: ${{ steps.build_gateway.outputs.image }}
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
+
+#       - name: Login to Azure
+#         uses: azure/login@v1
+#         with:
+#           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+#       - name: Login to ACR
+#         run: az acr login --name ${{ secrets.ACR_NAME }}
+
+#       - name: Build & push user-service
+#         id: build_user
+#         run: |
+#           IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/user-service:${{ github.sha }}
+#           docker build -t $IMAGE ./user-service
+#           docker push $IMAGE
+#           echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+#       - name: Build & push order-service
+#         id: build_order
+#         run: |
+#           IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/order-service:${{ github.sha }}
+#           docker build -t $IMAGE ./order-service
+#           docker push $IMAGE
+#           echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+#       - name: Build & push gateway
+#         id: build_gateway
+#         run: |
+#           IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/gateway:${{ github.sha }}
+#           docker build -t $IMAGE ./gateway
+#           docker push $IMAGE
+#           echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+
+#   deploy:
+#     needs: [build-and-push]
+#     runs-on: ubuntu-latest
+#     environment: azure-devops-assignment
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+
+#       - name: Login to Azure
+#         uses: azure/login@v1
+#         with:
+#           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+#       - name: Set AKS credentials (kubectl context)
+#         uses: azure/aks-set-context@v3
+#         with:
+#           creds: ${{ secrets.AZURE_CREDENTIALS }}
+#           cluster-name: ${{ secrets.AKS_NAME }}
+#           resource-group: ${{ secrets.AKS_RG }}
+
+#       - name: Confirm kubectl connectivity
+#         run: kubectl get nodes -o wide
+
+#       - name: Apply k8s manifests (create/update resources)
+#         run: |
+#           # Apply whatever manifests you have (creates Deployment the first time)
+#           kubectl apply -f k8s/ -n "${{ env.K8S_NAMESPACE }}" || kubectl apply -f k8s/
+
+#       - name: Wait for new resources to be accepted by API (short)
+#         run: sleep 5
+
+
+#       - name: Update images (only if built) and wait for rollout
+#         env:
+#           IMAGE_USER: ${{ needs.build-and-push.outputs.image_user }}
+#           IMAGE_ORDER: ${{ needs.build-and-push.outputs.image_order }}
+#           IMAGE_GATEWAY: ${{ needs.build-and-push.outputs.image_gateway }}
+#           NAMESPACE: ${{ env.K8S_NAMESPACE }}
+#         run: |
+#           set -euo pipefail
+#           # user-service
+#           if [ -n "${IMAGE_USER:-}" ]; then
+#             echo "Setting image for user-service -> ${IMAGE_USER}"
+#             kubectl -n "$NAMESPACE" set image deployment/user-service user="${IMAGE_USER}" --record || echo "set image returned nonzero"
+#             kubectl -n "$NAMESPACE" rollout status deployment/user-service --timeout=180s || (kubectl -n "$NAMESPACE" describe deploy user-service && kubectl -n "$NAMESPACE" get pods -l app=user-service -o wide && exit 1)
+#           else
+#             echo "IMAGE_USER empty — skipping user-service update"
+#           fi
+
+#           # order-service
+#           if [ -n "${IMAGE_ORDER:-}" ]; then
+#             echo "Setting image for order-service -> ${IMAGE_ORDER}"
+#             kubectl -n "$NAMESPACE" set image deployment/order-service order="${IMAGE_ORDER}" --record || echo "set image returned nonzero"
+#             kubectl -n "$NAMESPACE" rollout status deployment/order-service --timeout=180s || (kubectl -n "$NAMESPACE" describe deploy order-service && kubectl -n "$NAMESPACE" get pods -l app=order-service -o wide && exit 1)
+#           else
+#             echo "IMAGE_ORDER empty — skipping order-service update"
+#           fi
+
+#           # gateway
+#           if [ -n "${IMAGE_GATEWAY:-}" ]; then
+#             echo "Setting image for gateway -> ${IMAGE_GATEWAY}"
+#             kubectl -n "$NAMESPACE" set image deployment/gateway gateway="${IMAGE_GATEWAY}" --record || echo "set image returned nonzero"
+#             kubectl -n "$NAMESPACE" rollout status deployment/gateway --timeout=180s || (kubectl -n "$NAMESPACE" describe deploy gateway && kubectl -n "$NAMESPACE" get pods -l app=gateway -o wide && exit 1)
+#           else
+#             echo "IMAGE_GATEWAY empty — skipping gateway update"
+#           fi
+
+#       - name: Post-deploy smoke test (gateway health)
+#         run: |
+#           LB_IP=$(kubectl -n "${{ env.K8S_NAMESPACE }}" get svc gateway -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null || true)
+#           if [ -n "$LB_IP" ]; then
+#             echo "Gateway LB IP: $LB_IP"
+#             curl --fail --retry 5 --retry-delay 2 "http://$LB_IP/health"
+#           else
+#             echo "No external LB IP — testing from a pod"
+#             POD=$(kubectl -n "${{ env.K8S_NAMESPACE }}" get pods -l app=gateway -o jsonpath="{.items[0].metadata.name}")
+#             kubectl -n "${{ env.K8S_NAMESPACE }}" exec "$POD" -- curl --fail --retry 5 --retry-delay 2 http://localhost:3000/health
+#           fi
+
+
+
+
+
 name: CD — build, scan, push, deploy
 
 on:
@@ -17,9 +162,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: azure-devops-assignment
     outputs:
-      image_user: ${{ steps.build_user.outputs.image }}
-      image_order: ${{ steps.build_order.outputs.image }}
-      image_gateway: ${{ steps.build_gateway.outputs.image }}
+      artifact_id: ${{ steps.upload_images_artifact.outputs.artifact_id || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,25 +182,49 @@ jobs:
         id: build_user
         run: |
           IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/user-service:${{ github.sha }}
+          echo "Building ${IMAGE}"
           docker build -t $IMAGE ./user-service
           docker push $IMAGE
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "$IMAGE" > /tmp/image_user.txt
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
 
       - name: Build & push order-service
         id: build_order
         run: |
           IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/order-service:${{ github.sha }}
+          echo "Building ${IMAGE}"
           docker build -t $IMAGE ./order-service
           docker push $IMAGE
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "$IMAGE" > /tmp/image_order.txt
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
 
       - name: Build & push gateway
         id: build_gateway
         run: |
           IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/gateway:${{ github.sha }}
+          echo "Building ${IMAGE}"
           docker build -t $IMAGE ./gateway
           docker push $IMAGE
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "$IMAGE" > /tmp/image_gateway.txt
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
+
+      - name: Create images.json
+        id: create_images_json
+        run: |
+          USER_IMG=$(cat /tmp/image_user.txt)
+          ORDER_IMG=$(cat /tmp/image_order.txt)
+          GATEWAY_IMG=$(cat /tmp/image_gateway.txt)
+          jq -n --arg u "$USER_IMG" --arg o "$ORDER_IMG" --arg g "$GATEWAY_IMG" \
+            '{user: $u, order: $o, gateway: $g}' > images.json
+          echo "Created images.json:"
+          cat images.json
+
+      - name: Upload images artifact
+        id: upload_images_artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: images-json
+          path: images.json
 
   # scan-images:
   #   needs: build-and-push
@@ -66,28 +233,59 @@ jobs:
   #     - name: Checkout
   #       uses: actions/checkout@v4
 
+  #     - name: Download images artifact
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: images-json
+  #         path: ./artifacts
+
+  #     - name: Show images.json
+  #       run: cat ./artifacts/images.json
+
   #     - name: Trivy scan - user
   #       uses: aquasecurity/trivy-action@v1
   #       with:
-  #         image-ref: ${{ needs.build-and-push.outputs.image_user }}
+  #         image-ref: $(jq -r '.user' ./artifacts/images.json)
 
   #     - name: Trivy scan - order
   #       uses: aquasecurity/trivy-action@v1
   #       with:
-  #         image-ref: ${{ needs.build-and-push.outputs.image_order }}
+  #         image-ref: $(jq -r '.order' ./artifacts/images.json)
 
   #     - name: Trivy scan - gateway
   #       uses: aquasecurity/trivy-action@v1
   #       with:
-  #         image-ref: ${{ needs.build-and-push.outputs.image_gateway }}
+  #         image-ref: $(jq -r '.gateway' ./artifacts/images.json)
 
   deploy:
-    needs: [build-and-push]
+    needs: [build-and-push, scan-images]
     runs-on: ubuntu-latest
     environment: azure-devops-assignment
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download images artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: images-json
+          path: ./artifacts
+
+      - name: Read images into env
+        id: read_images
+        run: |
+          USER_IMG=$(jq -r '.user' ./artifacts/images.json)
+          ORDER_IMG=$(jq -r '.order' ./artifacts/images.json)
+          GATEWAY_IMG=$(jq -r '.gateway' ./artifacts/images.json)
+          echo "USER_IMG=${USER_IMG}" >> $GITHUB_OUTPUT
+          echo "ORDER_IMG=${ORDER_IMG}" >> $GITHUB_OUTPUT
+          echo "GATEWAY_IMG=${GATEWAY_IMG}" >> $GITHUB_OUTPUT
+
+      - name: Debug print image values
+        run: |
+          echo "User image from artifact: ${{ steps.read_images.outputs.USER_IMG || '' }}"
+          echo "Order image from artifact: ${{ steps.read_images.outputs.ORDER_IMG || '' }}"
+          echo "Gateway image from artifact: ${{ steps.read_images.outputs.GATEWAY_IMG || '' }}"
 
       - name: Login to Azure
         uses: azure/login@v1
@@ -102,47 +300,48 @@ jobs:
           resource-group: ${{ secrets.AKS_RG }}
 
       - name: Confirm kubectl connectivity
-        run: kubectl get nodes -o wide
+        run: |
+          kubectl get nodes -o wide
+          kubectl -n "${{ env.K8S_NAMESPACE }}" get deploy || true
 
       - name: Apply k8s manifests (create/update resources)
         run: |
-          # Apply whatever manifests you have (creates Deployment the first time)
           kubectl apply -f k8s/ -n "${{ env.K8S_NAMESPACE }}" || kubectl apply -f k8s/
 
       - name: Wait for new resources to be accepted by API (short)
         run: sleep 5
 
-
-      - name: Update images (only if built) and wait for rollout
+      - name: Update images (read from artifact) and wait for rollout
         env:
-          IMAGE_USER: ${{ needs.build-and-push.outputs.image_user }}
-          IMAGE_ORDER: ${{ needs.build-and-push.outputs.image_order }}
-          IMAGE_GATEWAY: ${{ needs.build-and-push.outputs.image_gateway }}
+          IMAGE_USER: ${{ steps.read_images.outputs.USER_IMG }}
+          IMAGE_ORDER: ${{ steps.read_images.outputs.ORDER_IMG }}
+          IMAGE_GATEWAY: ${{ steps.read_images.outputs.GATEWAY_IMG }}
           NAMESPACE: ${{ env.K8S_NAMESPACE }}
         run: |
           set -euo pipefail
-          # user-service
+          echo "IMAGE_USER=${IMAGE_USER}"
+          # show current deployments
+          kubectl -n "$NAMESPACE" get deploy -o wide || true
+
           if [ -n "${IMAGE_USER:-}" ]; then
-            echo "Setting image for user-service -> ${IMAGE_USER}"
-            kubectl -n "$NAMESPACE" set image deployment/user-service user="${IMAGE_USER}" --record || echo "set image returned nonzero"
+            echo "Updating user-service -> ${IMAGE_USER}"
+            kubectl -n "$NAMESPACE" set image deployment/user-service user="${IMAGE_USER}" || true
             kubectl -n "$NAMESPACE" rollout status deployment/user-service --timeout=180s || (kubectl -n "$NAMESPACE" describe deploy user-service && kubectl -n "$NAMESPACE" get pods -l app=user-service -o wide && exit 1)
           else
             echo "IMAGE_USER empty — skipping user-service update"
           fi
 
-          # order-service
           if [ -n "${IMAGE_ORDER:-}" ]; then
-            echo "Setting image for order-service -> ${IMAGE_ORDER}"
-            kubectl -n "$NAMESPACE" set image deployment/order-service order="${IMAGE_ORDER}" --record || echo "set image returned nonzero"
+            echo "Updating order-service -> ${IMAGE_ORDER}"
+            kubectl -n "$NAMESPACE" set image deployment/order-service order="${IMAGE_ORDER}" || true
             kubectl -n "$NAMESPACE" rollout status deployment/order-service --timeout=180s || (kubectl -n "$NAMESPACE" describe deploy order-service && kubectl -n "$NAMESPACE" get pods -l app=order-service -o wide && exit 1)
           else
             echo "IMAGE_ORDER empty — skipping order-service update"
           fi
 
-          # gateway
           if [ -n "${IMAGE_GATEWAY:-}" ]; then
-            echo "Setting image for gateway -> ${IMAGE_GATEWAY}"
-            kubectl -n "$NAMESPACE" set image deployment/gateway gateway="${IMAGE_GATEWAY}" --record || echo "set image returned nonzero"
+            echo "Updating gateway -> ${IMAGE_GATEWAY}"
+            kubectl -n "$NAMESPACE" set image deployment/gateway gateway="${IMAGE_GATEWAY}" || true
             kubectl -n "$NAMESPACE" rollout status deployment/gateway --timeout=180s || (kubectl -n "$NAMESPACE" describe deploy gateway && kubectl -n "$NAMESPACE" get pods -l app=gateway -o wide && exit 1)
           else
             echo "IMAGE_GATEWAY empty — skipping gateway update"
@@ -159,30 +358,3 @@ jobs:
             POD=$(kubectl -n "${{ env.K8S_NAMESPACE }}" get pods -l app=gateway -o jsonpath="{.items[0].metadata.name}")
             kubectl -n "${{ env.K8S_NAMESPACE }}" exec "$POD" -- curl --fail --retry 5 --retry-delay 2 http://localhost:3000/health
           fi
-      # - name: Update user-service image and wait rollout
-      #   run: |
-      #     kubectl -n "${{ env.K8S_NAMESPACE }}" set image deployment/user-service user=${{ needs.build-and-push.outputs.image_user }} --record
-      #     kubectl -n "${{ env.K8S_NAMESPACE }}" rollout status deployment/user-service --timeout=120s
-
-      # - name: Update order-service image and wait rollout
-      #   run: |
-      #     kubectl -n "${{ env.K8S_NAMESPACE }}" set image deployment/order-service order=${{ needs.build-and-push.outputs.image_order }} --record
-      #     kubectl -n "${{ env.K8S_NAMESPACE }}" rollout status deployment/order-service --timeout=120s
-
-      # - name: Update gateway image and wait rollout
-      #   run: |
-      #     kubectl -n "${{ env.K8S_NAMESPACE }}" set image deployment/gateway gateway=${{ needs.build-and-push.outputs.image_gateway }} --record
-      #     kubectl -n "${{ env.K8S_NAMESPACE }}" rollout status deployment/gateway --timeout=120s
-
-      # - name: Post-deploy smoke test (gateway health)
-      #   run: |
-      #     # if service is LoadBalancer
-      #     LB_IP=$(kubectl -n "${{ env.K8S_NAMESPACE }}" get svc gateway -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null || true)
-      #     if [ -n "$LB_IP" ]; then
-      #       echo "Gateway LB IP: $LB_IP"
-      #       curl --fail --retry 5 --retry-delay 2 "http://$LB_IP/health"
-      #     else
-      #       echo "No external LB IP detected — attempting cluster-internal curl (requires kubectl exec access)"
-      #       POD=$(kubectl -n "${{ env.K8S_NAMESPACE }}" get pods -l app=gateway -o jsonpath="{.items[0].metadata.name}")
-      #       kubectl -n "${{ env.K8S_NAMESPACE }}" exec "$POD" -- curl --fail --retry 5 --retry-delay 2 http://localhost:3000/health
-      #     fi
