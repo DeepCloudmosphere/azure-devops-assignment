@@ -21,5 +21,19 @@ spec:
             - name: ENVIRONMENT
               value: "prod"
 
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
 # Note:- ingress.yaml routes /users and /orders to gateway service or you can use path-based routing to gateway; 
 #        simpler: ingress points to gateway service on port 3000; gateway then forwards upstream to internal services.
