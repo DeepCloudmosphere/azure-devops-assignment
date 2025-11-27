@@ -34,6 +34,9 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest
+          # Install Azure Monitor OpenTelemetry exporter (allow pre-release if needed)
+          pip install --pre azure-monitor-opentelemetry-exporter
+          pip install pytest
 
       - name: Run pytest
         # ensure the service directory is on PYTHONPATH so `from app import app` works
