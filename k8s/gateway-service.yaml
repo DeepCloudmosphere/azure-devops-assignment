@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: gateway-service
+  name: gateway
 spec:
   selector:
-    app: gateway-service
+    app: gateway
   ports:
     - protocol: TCP
       port: 3000
