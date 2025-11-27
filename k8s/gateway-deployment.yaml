@@ -20,6 +20,11 @@ spec:
           env:
             - name: ENVIRONMENT
               value: "prod"
+            - name: APPINSIGHTS_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: appinsights-secret
+                  key: CONN
 
           resources:
             requests:

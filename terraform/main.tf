@@ -61,3 +61,17 @@ module "keyvault" {
 
   aks_managed_identity_object_id = module.aks.kubelet_identity_object_id
 }
+
+
+
+resource "azurerm_application_insights" "appinsights" {
+  name                = "${var.prefix}-ai"
+  location            = var.location
+  resource_group_name = var.rg_name
+  application_type    = "web"
+}
+
+output "appinsights_connection_string" {
+  value = azurerm_application_insights.appinsights.connection_string
+  sensitive = true
+}
