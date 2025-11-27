@@ -81,7 +81,7 @@ jobs:
   #         image-ref: ${{ needs.build-and-push.outputs.image_gateway }}
 
   deploy:
-    needs: [build-and-push, scan-images]
+    needs: [build-and-push]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
