@@ -8,19 +8,20 @@ if conn_str:
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.exporter.azuremonitor import AzureMonitorSpanExporter
     from opentelemetry.instrumentation.flask import FlaskInstrumentor
     from opentelemetry.instrumentation.requests import RequestsInstrumentor
+    from azure.monitor.opentelemetry.exporter import AzureMonitorTraceExporter
+
 
     resource = Resource.create({"service.name": "user-service"})
     provider = TracerProvider(resource=resource)
     trace.set_tracer_provider(provider)
-    exporter = AzureMonitorSpanExporter(connection_string=conn_str)
+    exporter = AzureMonitorTraceExporter(connection_string=conn_str)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     FlaskInstrumentor().instrument()
     RequestsInstrumentor().instrument()
 
-    
+
 app = Flask(__name__)
 
 USERS = {
