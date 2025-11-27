@@ -36,7 +36,8 @@ GitHub Actions CI/CD: Build → Scan → Push → Deploy
 Service Principal: RBAC-secured deployment identity
 
 # Architecture Diagram:
-docs/architecture.jpeg (generated separately)
+![AzureAssigmnet01](https://github.com/user-attachments/assets/c3b09183-f102-4ce0-9594-d0dac709bd6e)
+
 
 
 # 2. Prerequisites
@@ -54,6 +55,9 @@ docker
 GitHub account + repo
 
 Azure subscription (Owner or Contributor access)
+<img width="1000" height="679" alt="Screenshot 2025-11-27 at 2 25 42 AM" src="https://github.com/user-attachments/assets/f10b41c1-a082-40ee-bd80-fcce781fb414" />
+
+<img width="1428" height="755" alt="Screenshot 2025-11-27 at 2 28 50 AM" src="https://github.com/user-attachments/assets/a60fba48-9da3-42e6-a3e9-bae3acfa5874" />
 
 
 # 3. Terraform Infrastructure Deployment
@@ -63,6 +67,7 @@ Azure subscription (Owner or Contributor access)
 Creates Storage Account + Container for remote state.
 
 ```./scripts/bootstrap.sh tfstate-rg eastus mytfstateacct tfstate <SUBSCRIPTION_ID>```
+<img width="1232" height="575" alt="Screenshot 2025-11-27 at 2 55 27 AM" src="https://github.com/user-attachments/assets/e44140ca-c8f8-4b51-8611-1cf794e5b378" />
 
 3.2 Initialize & Apply Terraform
 ```
@@ -71,7 +76,11 @@ terraform init -backend-config=backend.tfvars.example
 terraform plan -var-file="envs/prod.tfvars"
 terraform apply -var-file="envs/prod.tfvars" -auto-approve
 ```
+<img width="1217" height="622" alt="Screenshot 2025-11-27 at 3 00 45 AM" src="https://github.com/user-attachments/assets/291fbcf1-b4c2-4ed8-8626-c6e2e210db34" />
+<img width="1239" height="664" alt="Screenshot 2025-11-27 at 3 15 11 AM" src="https://github.com/user-attachments/assets/4f924fa8-532b-4223-b751-a6b164919769" />
+<img width="1233" height="731" alt="Screenshot 2025-11-27 at 3 38 47 AM" src="https://github.com/user-attachments/assets/fd57177a-540c-4f7b-830a-3d46232b831e" />
 
+<img width="1209" height="599" alt="Screenshot 2025-11-27 at 3 40 28 AM" src="https://github.com/user-attachments/assets/8e22015b-9b84-4324-a37f-8dc69d227747" />
 
 ### Terraform provisions:
 
@@ -86,6 +95,8 @@ Log Analytics Workspace
 VNet/Subnets (if defined)
 
 App Insights (optional via module)
+
+
 
 # 4. GitHub Actions CI/CD
 ### 4.1 Create a Service Principal
@@ -165,6 +176,7 @@ env:
         key: CONN
 
 ```
+<img width="1908" height="917" alt="Screenshot 2025-11-27 at 8 22 56 AM" src="https://github.com/user-attachments/assets/a222b7b5-1916-4347-bc16-69bbbf059bb1" />
 
 #### 5.2 Ingress Controller (NGINX)
 ```
@@ -224,6 +236,16 @@ kubectl top nodes
 kubectl top pods
 kubectl get hpa
 ```
+
+<img width="1920" height="935" alt="Screenshot 2025-11-27 at 8 28 27 AM" src="https://github.com/user-attachments/assets/d489d3e9-10d9-47f4-92db-fcf5ba06f4b3" />
+
+<img width="1915" height="951" alt="Screenshot 2025-11-27 at 8 29 45 AM" src="https://github.com/user-attachments/assets/25e229f5-54b7-4c07-a61f-2bcbf25c435d" />
+
+<img width="1912" height="952" alt="Screenshot 2025-11-27 at 8 29 53 AM" src="https://github.com/user-attachments/assets/ab6ae9ea-fb96-435c-a582-be4c313f634c" />
+
+<img width="1918" height="909" alt="Screenshot 2025-11-27 at 8 40 09 AM" src="https://github.com/user-attachments/assets/b898107b-4d41-4c83-bf04-7a20b93a6597" />
+<img width="1920" height="951" alt="Screenshot 2025-11-27 at 8 40 19 AM" src="https://github.com/user-attachments/assets/cd76577d-5735-44f2-8f99-768527070cb6" />
+
 ## 8. Testing
 #### Unit Tests (pytest)
 
