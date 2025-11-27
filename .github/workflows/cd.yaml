@@ -204,7 +204,7 @@ jobs:
 
       - name: Post-deploy smoke test (gateway health)
         run: |
-          LB_IP=$(kubectl -n "${{ env.K8S_NAMESPACE }}" get svc gateway -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null || true)
+          LB_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null || true)
           if [ -n "$LB_IP" ]; then
             echo "Gateway LB IP: $LB_IP"
             curl --fail --retry 5 --retry-delay 2 "http://$LB_IP/health"
